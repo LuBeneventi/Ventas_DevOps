@@ -104,8 +104,10 @@ jobs:
           port: ${{ secrets.EC2_SSH_PORT || '22' }}
           script: |
             cd ${{ env.APP_DIR }}
-            cat > .env <<'EOF'
-APP_IMAGE=${{ secrets.AWS_ECR_URI && format('{0}/{1}:latest', secrets.AWS_ECR_URI, env.IMAGE_NAME) || format('{0}/{1}:latest', secrets.DOCKERHUB_USERNAME, env.IMAGE_NAME) }}
-EOF
+            if [ -n "${{ secrets.AWS_ECR_URI }}" ]; then
+              echo "APP_IMAGE=${{ secrets.AWS_ECR_URI }}/${{ env.IMAGE_NAME }}:latest" > .env
+            else
+              echo "APP_IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest" > .env
+            fi
             docker compose pull
             docker compose up -d --remove-orphans
