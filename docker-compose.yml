@@ -1,0 +1,43 @@
+version: "3.9"
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: ventas-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: secret
+      MYSQL_DATABASE: ventasdb
+      MYSQL_USER: ventasuser
+      MYSQL_PASSWORD: ventaspass
+    ports:
+      - "3306:3306"
+    volumes:
+      - ventas-db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${APP_IMAGE:-ventas-springboot-app:latest}
+    container_name: ventas-app
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      DB_ENDPOINT: db
+      DB_PORT: "3306"
+      DB_NAME: ventasdb
+      DB_USERNAME: ventasuser
+      DB_PASSWORD: ventaspass
+    restart: unless-stopped
+
+volumes:
+  ventas-db-data:
