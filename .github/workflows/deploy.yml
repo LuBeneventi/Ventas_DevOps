@@ -62,16 +62,5 @@ jobs:
             --instance-ids ${{ secrets.EC2_BACKEND_INSTANCE_ID }} \
             --document-name "AWS-RunShellScript" \
             --comment "Actualizar ventas-backend desde Docker Hub" \
-            --parameters '{"commands":[
-              "docker pull ${{ secrets.DOCKERHUB_USERNAME }}/ventas-app:latest",
-              "docker stop ventas-app || true",
-              "docker rm ventas-app || true",
-              "docker run -d --name ventas-app -p 8080:8080 \
-                -e DB_ENDPOINT=db \
-                -e DB_PORT=3306 \
-                -e DB_NAME=ventasdb \
-                -e DB_USERNAME=ventasuser \
-                -e DB_PASSWORD=ventaspass \
-                ${{ secrets.DOCKERHUB_USERNAME }}/ventas-app:latest"
-            ]}' \
+            --parameters '{"commands":["docker pull ${{ secrets.DOCKERHUB_USERNAME }}/ventas-app:latest","docker stop ventas-app || true","docker rm ventas-app || true","docker run -d --name ventas-app -p 8080:8080 -e DB_ENDPOINT=db -e DB_PORT=3306 -e DB_NAME=ventasdb -e DB_USERNAME=ventasuser -e DB_PASSWORD=ventaspass ${{ secrets.DOCKERHUB_USERNAME }}/ventas-app:latest"]}' \
             --output text
