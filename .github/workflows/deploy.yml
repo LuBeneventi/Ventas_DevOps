@@ -37,6 +37,10 @@ jobs:
       - name: Build con Maven (sin tests)
         run: ./mvnw --batch-mode -DskipTests package
 
+      - name: Verificar credenciales AWS
+        run: |
+          aws sts get-caller-identity
+
       - name: Configurar credenciales AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
