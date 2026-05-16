@@ -34,8 +34,19 @@ jobs:
       - name: Give execute permission to mvnw
         run: chmod +x ./mvnw
 
-      - name: Build con Maven 
+      - name: Build con Maven
         run: ./mvnw --batch-mode -DskipTests package
+
+      - name: Login en Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build y Push a Docker Hub
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest .
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
 
       - name: Configurar credenciales AWS
         uses: aws-actions/configure-aws-credentials@v4
@@ -45,29 +56,14 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Verificar credenciales AWS
-        run: |
-          aws sts get-caller-identity
-
-      - name: Login en Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v1
-
-      - name: Build imagen y push a ECR
-        run: |
-          docker build -t ${{ env.IMAGE_NAME }} .
-          docker tag ${{ env.IMAGE_NAME }}:latest ${{ secrets.ECR_REPO_URL_BACKEND }}:latest
-          docker push ${{ secrets.ECR_REPO_URL_BACKEND }}:latest
-
-      - name: Desplegar Backend via SSM
+      - name: Desplegar en EC2 via SSM
         run: |
           aws ssm send-command \
             --instance-ids ${{ secrets.EC2_BACKEND_INSTANCE_ID }} \
             --document-name "AWS-RunShellScript" \
-            --comment "Actualizar ventas-backend desde ECR" \
+            --comment "Actualizar ventas-backend desde Docker Hub" \
             --parameters '{"commands":[
-              "set -e",
-              "aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}",
-              "docker pull ${{ secrets.ECR_REPO_URL_BACKEND }}:latest",
+              "docker pull ${{ secrets.DOCKERHUB_USERNAME }}/ventas-app:latest",
               "docker stop ventas-app || true",
               "docker rm ventas-app || true",
               "docker run -d --name ventas-app -p 8080:8080 \
@@ -76,6 +72,6 @@ jobs:
                 -e DB_NAME=ventasdb \
                 -e DB_USERNAME=ventasuser \
                 -e DB_PASSWORD=ventaspass \
-                ${{ secrets.ECR_REPO_URL_BACKEND }}:latest"
+                ${{ secrets.DOCKERHUB_USERNAME }}/ventas-app:latest"
             ]}' \
             --output text
