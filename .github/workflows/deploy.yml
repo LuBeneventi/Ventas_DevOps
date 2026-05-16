@@ -34,7 +34,7 @@ jobs:
       - name: Give execute permission to mvnw
         run: chmod +x ./mvnw
 
-      - name: Build con Maven (sin tests)
+      - name: Build con Maven 
         run: ./mvnw --batch-mode -DskipTests package
 
       - name: Verificar credenciales AWS
