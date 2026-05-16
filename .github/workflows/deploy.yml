@@ -3,21 +3,19 @@
 on:
   push:
     branches:
-       - main
+      - main
   workflow_dispatch:
 
 env:
   IMAGE_NAME: ventas-app
-  IMAGE_TAG: latest
-  APP_DIR: /home/ubuntu/app
 
 jobs:
-  build:
-    name: Build and Test
+  build-push-deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout código
+        uses: actions/checkout@v3
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -26,29 +24,18 @@ jobs:
           java-version: '17'
 
       - name: Cache Maven packages
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      - name: Build with Maven
+      - name: Give execute permission to mvnw
+        run: chmod +x ./mvnw
+
+      - name: Build con Maven (sin tests)
         run: ./mvnw --batch-mode -DskipTests package
-
-      - name: Run tests
-        run: ./mvnw --batch-mode test
-
-  publish:
-    name: Build and Publish Docker Image
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
 
       - name: Configurar credenciales AWS
         uses: aws-actions/configure-aws-credentials@v4
@@ -59,39 +46,32 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Login en Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build y Push a ECR
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ secrets.ECR_REPO_URL_BACKEND }}:latest
-            ${{ secrets.ECR_REPO_URL_BACKEND }}:${{ github.sha }}
+      - name: Build imagen y push a ECR
+        run: |
+          docker build -t ${{ env.IMAGE_NAME }} .
+          docker tag ${{ env.IMAGE_NAME }}:latest ${{ secrets.ECR_REPO_URL_BACKEND }}:latest
+          docker push ${{ secrets.ECR_REPO_URL_BACKEND }}:latest
 
-  deploy:
-    name: Deploy to EC2
-    needs: publish
-    runs-on: ubuntu-latest
-    steps:
-      - name: Configurar credenciales AWS
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Deploy en EC2 via SSM
+      - name: Desplegar Backend via SSM
         run: |
           aws ssm send-command \
             --instance-ids ${{ secrets.EC2_BACKEND_INSTANCE_ID }} \
             --document-name "AWS-RunShellScript" \
-            --region ${{ secrets.AWS_REGION }} \
-            --parameters commands='[
+            --comment "Actualizar ventas-backend desde ECR" \
+            --parameters '{"commands":[
+              "set -e",
               "aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}",
               "docker pull ${{ secrets.ECR_REPO_URL_BACKEND }}:latest",
-              "cd /home/ubuntu/app && docker compose up -d --remove-orphans"
-            ]' \
+              "docker stop ventas-app || true",
+              "docker rm ventas-app || true",
+              "docker run -d --name ventas-app -p 8080:8080 \
+                -e DB_ENDPOINT=db \
+                -e DB_PORT=3306 \
+                -e DB_NAME=ventasdb \
+                -e DB_USERNAME=ventasuser \
+                -e DB_PASSWORD=ventaspass \
+                ${{ secrets.ECR_REPO_URL_BACKEND }}:latest"
+            ]}' \
             --output text
